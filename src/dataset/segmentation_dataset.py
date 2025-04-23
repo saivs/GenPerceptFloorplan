@@ -16,6 +16,9 @@ class SegmentationDataset(BaseDataset):
         augmentation_args: dict = None,
         resize_to_hw=None,
         rgb_transform=lambda x: x / 255.0 * 2 - 1,  # [0, 255] -> [-1, 1]
+        class_colors=None,  # Предварительно загруженные цвета классов
+        class_indices=None,  # Предварительно загруженные индексы классов
+        num_classes=None,   # Предварительно загруженное количество классов
         **kwargs,
     ) -> None:
         super().__init__(
@@ -34,14 +37,33 @@ class SegmentationDataset(BaseDataset):
             **kwargs,
         )
         
-        # Class color mapping (will be initialized after first segmentation mask is loaded)
-        self.class_colors = None
-        self.class_indices = None
-        self.num_classes = None
-        
-        # Initialize class mapping from the first segmentation mask
-        if len(self.filenames) > 0 and len(self.filenames[0]) >= 2:
-            self._initialize_class_mapping(self.filenames[0][1])
+        # Если предоставлены предварительно загруженные данные о классах, используем их
+        if class_colors is not None and class_indices is not None and num_classes is not None:
+            # Преобразование строковых ключей в кортежи для class_indices
+            if isinstance(class_indices, dict):
+                self.class_indices = {}
+                for key, value in class_indices.items():
+                    # Преобразование ключа '0_0_255' в кортеж (0, 0, 255)
+                    if '_' in key:
+                        tuple_key = tuple(map(int, key.split('_')))
+                        self.class_indices[tuple_key] = value
+                    else:
+                        self.class_indices[key] = value
+            else:
+                self.class_indices = class_indices
+            
+            self.class_colors = [tuple(color) for color in class_colors]
+            self.num_classes = num_classes
+            print(f"Using pre-loaded class information: {self.num_classes} classes")
+        else:
+            # Инициализируем из первой маски сегментации, как в оригинальном классе
+            self.class_colors = None
+            self.class_indices = None
+            self.num_classes = None
+            
+            # Инициализация отображения классов из первой маски сегментации
+            if len(self.filenames) > 0 and len(self.filenames[0]) >= 2:
+                self._initialize_class_mapping(self.filenames[0][1])
 
     def _initialize_class_mapping(self, first_seg_path):
         seg_img = self._read_image(first_seg_path, convert_rgb=True)
