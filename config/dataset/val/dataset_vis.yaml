@@ -1,0 +1,9 @@
+dataset:
+  vis:
+  - name: base_seg
+    disp_name: floorplans_vis
+    dir: my_dataset
+    filenames: /content/GenPercept/datasets/my_dataset/val.txt
+    resize_to_hw:
+    - 512
+    - 512
