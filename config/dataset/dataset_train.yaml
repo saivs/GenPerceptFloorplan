@@ -1,0 +1,9 @@
+dataset:
+  train:
+    name: base_seg
+    disp_name: floorplans_train
+    dir: my_dataset
+    filenames: /content/GenPercept/datasets/my_dataset/train.txt
+    resize_to_hw:
+    - 512
+    - 512
