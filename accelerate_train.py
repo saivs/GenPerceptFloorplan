@@ -27,6 +27,7 @@ import torch
 import torch.nn as nn
 from omegaconf import OmegaConf
 from torch.utils.data import ConcatDataset, DataLoader
+from segmentation_train import create_dataset_with_class_info, create_loss_with_class_weights
 
 from genpercept.genpercept_pipeline import GenPerceptPipeline
 from src.dataset import BaseDataset, DatasetMode, get_dataset
@@ -314,11 +315,9 @@ if "__main__" == __name__:
         loader_generator = torch.Generator().manual_seed(loader_seed)
 
     # Training dataset
-    depth_transform: DepthNormalizerBase = get_depth_normalizer(
-    train_dataset: BaseDataset = get_dataset(
-        cfg_data.train,
-        base_data_dir=base_data_dir,
-        mode=DatasetMode.TRAIN,
+    train_dataset = create_dataset_with_class_info(
+        config_path="config/dataset/dataset_train.yaml",  # тот же путь, который ты передаёшь в аргументах
+        class_info_path="config/class_info.json"  # адаптируй путь, если нужно
     )
     
     if "mixed" == cfg_data.train.name:
@@ -476,6 +475,7 @@ if "__main__" == __name__:
     else:
         t_end = None
 
+    loss_fn = create_loss_with_class_weights("config/class_info.json")
     trainer_cls = get_trainer_cls(cfg.trainer.name)
     logging.debug(f"Trainer: {trainer_cls}")
     trainer = trainer_cls(
@@ -492,6 +492,7 @@ if "__main__" == __name__:
         out_dir_ckpt=out_dir_ckpt,
         out_dir_eval=out_dir_eval,
         out_dir_vis=out_dir_vis,
+        loss_fn=loss_fn,
         accumulation_steps=accumulation_steps,
         val_dataloaders=val_loaders,
         vis_dataloaders=vis_loaders,

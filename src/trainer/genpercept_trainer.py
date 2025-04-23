@@ -92,6 +92,7 @@ class GenPerceptTrainer:
         out_dir_ckpt,
         out_dir_eval,
         out_dir_vis,
+        loss_fn,
         accumulation_steps: int,
         val_dataloaders: List[DataLoader] = None,
         vis_dataloaders: List[DataLoader] = None,
@@ -137,40 +138,8 @@ class GenPerceptTrainer:
         self.with_latent_loss = ('with_latent_loss' in self.cfg.loss.keys()) and (self.cfg.loss.with_latent_loss == True)
 
         # Loss
-        if 'customized_loss' in cfg.loss.keys() and cfg.loss.customized_loss == True:
-            if self.with_latent_loss:
-                self.loss = torch.nn.MSELoss(**self.cfg.loss.kwargs)
-            else:
-                self.loss = None
-            self.customized_loss = dict()
-            loss_names = cfg.loss.name
-            for loss_name in loss_names:
-                if loss_name == 'l1_loss':
-                    self.customized_loss[loss_name] = L1Loss(loss_weight=1.0)
-                elif loss_name == "least_square_ssi_loss":
-                    self.customized_loss[loss_name] = ScaleAndShiftInvariantLoss(align_type='least_square')
-                elif loss_name == "medium_ssi_loss":
-                    self.customized_loss[loss_name] = ScaleAndShiftInvariantLoss(align_type='medium')
-                elif loss_name == "grad_loss":
-                    self.customized_loss[loss_name] = GradientLoss(scales=1)
-                elif loss_name == 'mse_loss':
-                    self.customized_loss[loss_name] = get_loss(loss_name=loss_name, reduction='mean')
-                elif loss_name == 'angular_loss':
-                    assert self.mode == 'normal'
-                    self.customized_loss[loss_name] = angular_loss
-                elif loss_name == 'vnl_loss':
-                    self.customized_loss[loss_name] = VNLoss(loss_weight=1.0, sample_ratio=0.2)
-                elif loss_name == 'hdnr_loss':
-                    self.customized_loss[loss_name] = HDNRandomLoss(loss_weight=0.5, random_num=10)
-                elif loss_name == 'hdsnr_loss':
-                    self.customized_loss[loss_name] = HDSNRandomLoss(loss_weight=0.5, random_num=20, batch_limit=4)
-                else:
-                    raise ValueError
-                self.customized_loss[loss_name] = self.accelerator.prepare(self.customized_loss[loss_name])
-
-        else:
-            self.loss = get_loss(loss_name=self.cfg.loss.name, **self.cfg.loss.kwargs)
-            self.customized_loss = None
+        self.loss = loss_fn
+        self.customized_loss = None
 
         # Experiment setting
         self.rgb_blending = ('rgb_blending' in self.cfg.pipeline.kwargs.keys()) and (self.cfg.pipeline.kwargs.rgb_blending == True)
