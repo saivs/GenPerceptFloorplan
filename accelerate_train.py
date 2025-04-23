@@ -315,16 +315,12 @@ if "__main__" == __name__:
 
     # Training dataset
     depth_transform: DepthNormalizerBase = get_depth_normalizer(
-        cfg_normalizer=cfg.depth_normalization
-    )
     train_dataset: BaseDataset = get_dataset(
         cfg_data.train,
         base_data_dir=base_data_dir,
         mode=DatasetMode.TRAIN,
-        augmentation_args=cfg.augmentation,
-        depth_transform=depth_transform,
     )
-    logging.debug("Augmentation: ", cfg.augmentation)
+    
     if "mixed" == cfg_data.train.name:
         dataset_ls = train_dataset
         assert len(cfg_data.train.prob_ls) == len(
