@@ -1,0 +1,4 @@
+!python /content/GenPercept/dataset_class_analyzer.py \
+--filenames_path /content/GenPercept/datasets/my_dataset/train.txt \
+--dataset_dir /content/GenPercept/datasets/my_dataset \
+--output_config /content/GenPercept/config/class_info.json
