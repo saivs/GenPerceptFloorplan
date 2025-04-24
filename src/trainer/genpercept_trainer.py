@@ -67,7 +67,7 @@ from diffusers import AutoencoderKL
 from src.util.alignment import compute_scale_and_shift
 from peft import LoraConfig
 from genpercept.losses.geometry_losses import angular_loss
-from src.util.segmentation_loss import RGBSegmentationLoss
+from src.util.segmentation_loss import SegmentationLoss
 
 from safetensors.torch import load_model, load_file
 from transformers import DPTConfig
@@ -179,9 +179,9 @@ class GenPerceptTrainer:
                   #     ce_weight: 1.0
                   #     dice_weight: 1.0
                   #     ignore_index: 255   # or None
-                  self.customized_loss[loss_name] = RGBSegmentationLoss(
+                  self.customized_loss[loss_name] = SegmentationLoss(
                       class_info_path=cfg.loss.class_info_path,
-                      l1_weight=cfg.loss.ce_weight,
+                      ce_weight=cfg.loss.ce_weight,
                       dice_weight=cfg.loss.dice_weight,
                       smooth=cfg.loss.get('dice_smooth', 1e-5)
                   )    
