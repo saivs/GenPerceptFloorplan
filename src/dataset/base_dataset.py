@@ -162,6 +162,7 @@ class BaseDataset(Dataset):
 
     def __getitem__(self, index):
         rasters, other = self._get_data_item(index)
+
         if DatasetMode.TRAIN == self.mode:
             rasters = self._training_preprocess(rasters)
         # merge
@@ -173,7 +174,7 @@ class BaseDataset(Dataset):
         rgb_rel_path, depth_rel_path, filled_rel_path, normal_rel_path, matting_rel_path, dis_rel_path, seg_rel_path = self._get_data_path(index=index)
 
         rasters = {}
-
+        
         # RGB data
         rasters.update(self._load_rgb_data(rgb_rel_path=rgb_rel_path))
 
@@ -335,8 +336,9 @@ class BaseDataset(Dataset):
         outputs = {}
         try:
             seg_raw = self._read_image(seg_rel_path, convert_rgb=True).squeeze()
-            seg_raw = np.transpose(seg_raw, (2, 0, 1))  # [rgb, H, W]
-            seg_raw_linear = torch.from_numpy(seg_raw).float()  # [3, H, W]
+            seg_raw = np.transpose(seg_raw, (2, 0, 1))
+            # torch.tensor автоматически делает copy, и варнинг не будет
+            seg_raw_linear = torch.tensor(seg_raw, dtype=torch.float32)
             outputs["seg_raw_linear"] = seg_raw_linear.clone()
         except:
             seg_np = np.array([-1.,-1.,-1.])[:, None, None]
@@ -349,7 +351,6 @@ class BaseDataset(Dataset):
 
     def _get_data_path(self, index):
         filename_line = self.filenames[index]
-
         # Get data path
         rgb_rel_path = filename_line[0]
 
@@ -367,7 +368,7 @@ class BaseDataset(Dataset):
 
         return rgb_rel_path, depth_rel_path, filled_rel_path, normal_rel_path, matting_rel_path, dis_rel_path, seg_rel_path
 
-    def _read_image(self, img_rel_path, convert_rgb=False) -> np.ndarray:
+    def _read_image(self, img_rel_path, convert_rgb=True) -> np.ndarray:
         if self.is_tar:
             if self.tar_obj is None:
                 self.tar_obj = tarfile.open(self.dataset_dir)
@@ -433,7 +434,6 @@ class BaseDataset(Dataset):
         # Augmentation
         if self.augm_args is not None:
             rasters = self._augment_data(rasters)
-
         # Depth
         if "depth_raw_linear" in rasters.keys():
             # Depth Normalization
@@ -519,7 +519,6 @@ class BaseDataset(Dataset):
             rasters_dict = {k: v.flip(-1) for k, v in rasters_dict.items()}
             if "normal_raw_linear" in rasters_dict.keys():
                 rasters_dict["normal_raw_linear"][0, :, :] = -rasters_dict["normal_raw_linear"][0, :, :]
-
         return rasters_dict
 
     def __del__(self):

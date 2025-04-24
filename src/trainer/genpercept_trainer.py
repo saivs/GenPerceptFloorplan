@@ -43,6 +43,7 @@ from src.util import metric
 from src.util.data_loader import skip_first_batches
 from src.util.logging_util import tb_logger, eval_dic_to_text
 from src.util.loss import get_loss
+from src.util.loss import RGBExactLoss
 from src.util.lr_scheduler import IterExponential
 from src.util.metric import MetricTracker
 from src.util.multi_res_noise import multi_res_noise_like
@@ -66,6 +67,7 @@ from diffusers import AutoencoderKL
 from src.util.alignment import compute_scale_and_shift
 from peft import LoraConfig
 from genpercept.losses.geometry_losses import angular_loss
+from src.util.segmentation_loss import RGBSegmentationLoss
 
 from safetensors.torch import load_model, load_file
 from transformers import DPTConfig
@@ -113,10 +115,13 @@ class GenPerceptTrainer:
             mode = 'matting'
         elif 'dis' in self.cfg.gt_type:
             mode = 'dis'
+        elif 'rgb' in self.cfg.gt_type:
+            mode = 'rgb'
         elif 'seg' in self.cfg.gt_type:
-            mode = 'seg'
+            mode = 'seg'  
         else:
             raise ValueError
+
         self.mode = mode
         self.vae = vae
         self.text_encoder = text_encoder
@@ -149,6 +154,8 @@ class GenPerceptTrainer:
                     self.customized_loss[loss_name] = L1Loss(loss_weight=1.0)
                 elif loss_name == "least_square_ssi_loss":
                     self.customized_loss[loss_name] = ScaleAndShiftInvariantLoss(align_type='least_square')
+                elif loss_name == "rgb_exact":
+                  self.customized_loss[loss_name] = RGBExactLoss()
                 elif loss_name == "medium_ssi_loss":
                     self.customized_loss[loss_name] = ScaleAndShiftInvariantLoss(align_type='medium')
                 elif loss_name == "grad_loss":
@@ -164,6 +171,20 @@ class GenPerceptTrainer:
                     self.customized_loss[loss_name] = HDNRandomLoss(loss_weight=0.5, random_num=10)
                 elif loss_name == 'hdsnr_loss':
                     self.customized_loss[loss_name] = HDSNRandomLoss(loss_weight=0.5, random_num=20, batch_limit=4)
+                elif loss_name == 'segmentation':
+                  # expect in your YAML/ΩConf:
+                  #   loss:
+                  #     name: ['segmentation']
+                  #     class_info_path: '/path/to/class_info.json'
+                  #     ce_weight: 1.0
+                  #     dice_weight: 1.0
+                  #     ignore_index: 255   # or None
+                  self.customized_loss[loss_name] = RGBSegmentationLoss(
+                      class_info_path=cfg.loss.class_info_path,
+                      l1_weight=cfg.loss.ce_weight,
+                      dice_weight=cfg.loss.dice_weight,
+                      smooth=cfg.loss.get('dice_smooth', 1e-5)
+                  )    
                 else:
                     raise ValueError
                 self.customized_loss[loss_name] = self.accelerator.prepare(self.customized_loss[loss_name])
@@ -430,7 +451,7 @@ class GenPerceptTrainer:
                         else:
                             continue
                         
-                        import pdb; pdb.set_trace()
+                        #import pdb; pdb.set_trace()
                         state_dict = accelerator.get_state_dict(model)
                         os.makedirs(osp.join(output_dir, sub_dir), exist_ok=True)
                         save_file(state_dict, osp.join(output_dir, sub_dir, file_name))
@@ -459,7 +480,7 @@ class GenPerceptTrainer:
                                 del unet.conv_norm_out
                             else:
                                 unet = UNet2DConditionModel.from_pretrained(os.path.join(self.base_ckpt_dir, self.cfg.model.pretrained_path), subfolder=sub_dir)
-                            
+
                             # Adapt input layers
                             if (8 != unet.config["in_channels"]) and (not self.train_genpercept) and (not self.rgb_blending):
                                 unet = self._replace_unet_conv_in(unet)
@@ -773,7 +794,7 @@ class GenPerceptTrainer:
                                 mask=mask,
                             )
 
-                            if loss_name not in ['least_square_ssi_loss', 'medium_ssi_loss', 'grad_loss', 'mse_loss']:
+                            if loss_name not in ['least_square_ssi_loss', 'medium_ssi_loss', 'grad_loss', 'mse_loss', 'rgb_exact', 'segmentation']:
                                 if 'intrinsic' in batch.keys():
                                     data_dict['intrinsic'] = batch['intrinsic']
                                 else:
@@ -785,6 +806,16 @@ class GenPerceptTrainer:
                                 loss_dict[loss_name] = loss_i
                             elif loss_name == 'mse_loss':
                                 loss_i = loss_func(prediction[mask], target[mask])
+                                loss_weight = 1
+                                loss += loss_i * loss_weight
+                                loss_dict[loss_name] = loss_i
+                            elif loss_name == 'rgb_exact':
+                                loss_i = loss_func(**data_dict)
+                                loss_weight = 1
+                                loss += loss_i * loss_weight
+                                loss_dict[loss_name] = loss_i
+                            elif loss_name == 'segmentation':
+                                loss_i = loss_func(**data_dict)
                                 loss_weight = 1
                                 loss += loss_i * loss_weight
                                 loss_dict[loss_name] = loss_i
@@ -1228,7 +1259,7 @@ class GenPerceptTrainer:
                 pred_to_save = (pipe_out.pred_np * 65535.0).astype(np.uint16)
                 if self.mode in ['depth', 'matting', 'dis']:
                     Image.fromarray(pred_to_save).save(png_save_path, mode="I;16")
-                elif self.mode in ['normal', 'seg']:
+                elif self.mode in ['normal', 'seg', "rgb"]:
                     normal = pipe_out.pred_np * 255
                     normal = normal.astype(np.uint8)
                     Image.fromarray(normal).save(png_save_path)
